@@ -60,16 +60,16 @@ import "time"
 import "sync/atomic"
 
 type reqMsg struct {
-	endname  interface{} // name of sending ClientEnd
-	svcMeth  string      // e.g. "Raft.AppendEntries"
-	argsType reflect.Type
-	args     []byte
-	replyCh  chan replyMsg
+	endname  interface{} 	// 调用者的ClientEnd名称，interface{}类型是为了支持任意类型的名称
+	svcMeth  string      	// e.g. "Raft.AppendEntries"，服务名称.方法名称
+	argsType reflect.Type	// 参数类型
+	args     []byte			// 参数
+	replyCh  chan replyMsg	// 用于接收响应的channel
 }
 
 type replyMsg struct {
-	ok    bool
-	reply []byte
+	ok    bool				// 是否成功
+	reply []byte			// 响应内容
 }
 
 type ClientEnd struct {
@@ -78,7 +78,7 @@ type ClientEnd struct {
 	done    chan struct{} // closed when Network is cleaned up
 }
 
-// send an RPC, wait for the reply.
+// 发送RPC请求，等待响应
 // the return value indicates success; false means that
 // no reply was received from the server.
 func (e *ClientEnd) Call(svcMeth string, args interface{}, reply interface{}) bool {

@@ -1,44 +1,41 @@
 package labgob
 
-//
-// trying to send non-capitalized fields over RPC produces a range of
-// misbehavior, including both mysterious incorrect computation and
-// outright crashes. so this wrapper around Go's encoding/gob warns
-// about non-capitalized field names.
-//
+// 尝试通过 RPC 发送非大写字段会产生一系列错误行为，
+// 包括神秘的错误计算和直接崩溃。
+
 
 import "encoding/gob"
 import "io"
-import "reflect"
+import "reflect"								// 用于元编程，允许程序在运行时检查类型、变量和方法
 import "fmt"
 import "sync"
 import "unicode"
 import "unicode/utf8"
 
-var mu sync.Mutex
-var errorCount int // for TestCapital
-var checked map[reflect.Type]bool
+var mu sync.Mutex										
+var errorCount int 								// for TestCapital
+var checked map[reflect.Type]bool				// Key:reflect.Type, Value:bool，用于检查类型是否已经检查过
 
 type LabEncoder struct {
-	gob *gob.Encoder
+	gob *gob.Encoder							// gob 编码器
 }
-
-func NewEncoder(w io.Writer) *LabEncoder {
-	enc := &LabEncoder{}
-	enc.gob = gob.NewEncoder(w)
-	return enc
+// 创建一个新的编码器
+func NewEncoder(w io.Writer) *LabEncoder {		
+	enc := &LabEncoder{}						
+	enc.gob = gob.NewEncoder(w)					
+	return enc	
 }
-
+// 编码器的 Encode 方法
 func (enc *LabEncoder) Encode(e interface{}) error {
 	checkValue(e)
 	return enc.gob.Encode(e)
 }
-
+// 编码器的 EncodeValue 方法
 func (enc *LabEncoder) EncodeValue(value reflect.Value) error {
-	checkValue(value.Interface())
+	checkValue(value.Interface())			//value.Interface() 返回 value 的值
 	return enc.gob.EncodeValue(value)
 }
-
+// 解码器
 type LabDecoder struct {
 	gob *gob.Decoder
 }
@@ -64,46 +61,46 @@ func RegisterName(name string, value interface{}) {
 	checkValue(value)
 	gob.RegisterName(name, value)
 }
-
+// 检查值的类型
 func checkValue(value interface{}) {
 	checkType(reflect.TypeOf(value))
 }
-
+// 检查类型
 func checkType(t reflect.Type) {
-	k := t.Kind()
+	k := t.Kind()									// 获取类型的种类
 
-	mu.Lock()
-	// only complain once, and avoid recursion.
-	if checked == nil {
-		checked = map[reflect.Type]bool{}
+	mu.Lock()										// 互斥锁
+	// 只编译一次，避免重复编译 
+	if checked == nil {								// 如果 checked 为空
+		checked = map[reflect.Type]bool{}			
 	}
-	if checked[t] {
+	if checked[t] {									// 如果检查过了
 		mu.Unlock()
 		return
 	}
-	checked[t] = true
+	checked[t] = true								// 标记为已检查
 	mu.Unlock()
 
 	switch k {
-	case reflect.Struct:
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			rune, _ := utf8.DecodeRuneInString(f.Name)
-			if unicode.IsUpper(rune) == false {
-				// ta da
+	case reflect.Struct:							// 如果是结构体	
+		for i := 0; i < t.NumField(); i++ {			// 遍历结构体的每个字段
+			f := t.Field(i)							// i字段
+			rune, _ := utf8.DecodeRuneInString(f.Name)	// 获取字段名的第一个字符
+			if unicode.IsUpper(rune) == false {			// 如果不是大写
+				// ta da 
 				fmt.Printf("labgob error: lower-case field %v of %v in RPC or persist/snapshot will break your Raft\n",
 					f.Name, t.Name())
 				mu.Lock()
-				errorCount += 1
+				errorCount += 1						// 错误计数
 				mu.Unlock()
 			}
-			checkType(f.Type)
+			checkType(f.Type)						// 检查字段的类型
 		}
 		return
-	case reflect.Slice, reflect.Array, reflect.Ptr:
-		checkType(t.Elem())
+	case reflect.Slice, reflect.Array, reflect.Ptr:	// 如果是切片、数组、指针
+		checkType(t.Elem())							// 检查元素的类型
 		return
-	case reflect.Map:
+	case reflect.Map:								// 如果是Map
 		checkType(t.Elem())
 		checkType(t.Key())
 		return
@@ -113,11 +110,8 @@ func checkType(t reflect.Type) {
 }
 
 //
-// warn if the value contains non-default values,
-// as it would if one sent an RPC but the reply
-// struct was already modified. if the RPC reply
-// contains default values, GOB won't overwrite
-// the non-default value.
+// 如果值包含非默认值，GOB 将发出警告、
+// 如果 RPC 回复包含默认值，GOB 不会覆盖非默认值。
 //
 func checkDefault(value interface{}) {
 	if value == nil {
